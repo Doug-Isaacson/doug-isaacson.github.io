@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Sky Constellation Map</title>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #22396f;
+    color: #e8efff;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+#skyCanvas {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    touch-action: none;
+    cursor: grab;
+}
+
+#skyCanvas.dragging {
+    cursor: grabbing;
+}
+
+#controlPanel {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 272px;
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 12px;
+    background: rgba(14, 28, 66, 0.86);
+    border: 1px solid rgba(160, 190, 255, 0.35);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+#panelHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+#panelBody {
+    margin-top: 10px;
+}
+
+#panelBody.hidden {
+    display: none;
+}
+
+.fieldGroup {
+    margin-bottom: 10px;
+}
+
+.fieldLabel {
+    display: block;
+    margin-top: 6px;
+    margin-bottom: 3px;
+    color: #b9cdf5;
+}
+
+.fieldLabel.first {
+    margin-top: 0;
+}
+
+input[type="datetime-local"],
+input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 6px;
+    background: #12234f;
+    color: #ffffff;
+    border: 1px solid rgba(160, 190, 255, 0.45);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.buttonRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+button {
+    padding: 5px 8px;
+    background: #2f4d94;
+    color: #ffffff;
+    border: 1px solid rgba(160, 190, 255, 0.5);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #3a5fb5;
+}
+
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid #ffd966;
+    outline-offset: 1px;
+}
+
+.checkRow {
+    display: block;
+    margin-bottom: 4px;
+}
+
+#locationStatus {
+    margin-top: 4px;
+    color: #b9cdf5;
+    font-size: 12px;
+}
+
+#viewReadout,
+#siderealReadout {
+    color: #ffe9a8;
+}
+
+#helpText {
+    margin-top: 8px;
+    color: #b9cdf5;
+    font-size: 12px;
+}
+
+#deepSkyKey {
+    margin-top: 8px;
+    color: #8fd3ff;
+    font-size: 12px;
+}
+
+#zoomPanel {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#zoomPanel button {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    padding: 0;
+    background: rgba(14, 28, 66, 0.86);
+}
+
+#zoomPanel button:hover {
+    background: #3a5fb5;
+}
+
+#zoomPanel button#resetViewButton {
+    font-size: 11px;
+}
+</style>
+</head>
+<body>
+<canvas id="skyCanvas"></canvas>
+
+<div id="controlPanel">
+    <div id="panelHeader">
+        <span>Sky from the ground</span>
+        <button id="togglePanelButton" type="button">Hide</button>
+    </div>
+    <div id="panelBody">
+        <div class="fieldGroup">
+            <label class="fieldLabel first" for="dateTimeInput">Date and time (your local time)</label>
+            <input id="dateTimeInput" type="datetime-local">
+            <div class="buttonRow">
+                <button type="button" id="nowButton">Now</button>
+                <button type="button" class="stepButton" data-minutes="-1440">-1 day</button>
+                <button type="button" class="stepButton" data-minutes="-60">-1 hour</button>
+                <button type="button" class="stepButton" data-minutes="60">+1 hour</button>
+                <button type="button" class="stepButton" data-minutes="1440">+1 day</button>
+            </div>
+        </div>
+
+        <div class="fieldGroup">
+            <label class="fieldLabel first" for="latitudeInput">Latitude in degrees (north is positive)</label>
+            <input id="latitudeInput" type="number" min="-90" max="90" step="0.1" value="40.7">
+            <label class="fieldLabel" for="longitudeInput">Longitude in degrees (east is positive)</label>
+            <input id="longitudeInput" type="number" min="-180" max="180" step="0.1" value="-74.5">
+            <div class="buttonRow">
+                <button type="button" id="locationButton">Use my location</button>
+            </div>
+            <div id="locationStatus"></div>
+        </div>
+
+        <div class="fieldGroup">
+            <span class="fieldLabel first">Look toward</span>
+            <div class="buttonRow">
+                <button type="button" class="lookButton" data-azimuth="0" data-altitude="35">North</button>
+                <button type="button" class="lookButton" data-azimuth="90" data-altitude="35">East</button>
+                <button type="button" class="lookButton" data-azimuth="180" data-altitude="35">South</button>
+                <button type="button" class="lookButton" data-azimuth="270" data-altitude="35">West</button>
+                <button type="button" class="lookButton" data-altitude="89">Overhead</button>
+            </div>
+        </div>
+
+        <div class="fieldGroup">
+            <label class="checkRow"><input type="checkbox" id="followClockCheckbox" checked> Follow the current time</label>
+            <label class="checkRow"><input type="checkbox" id="showLinesCheckbox" checked> Constellation lines</label>
+            <label class="checkRow"><input type="checkbox" id="showConstellationNamesCheckbox" checked> Constellation names</label>
+            <label class="checkRow"><input type="checkbox" id="showStarNamesCheckbox" checked> Star names</label>
+            <label class="checkRow"><input type="checkbox" id="showDeepSkyCheckbox" checked> Deep-sky objects (galaxies, clusters, nebulae)</label>
+            <label class="checkRow"><input type="checkbox" id="showGridCheckbox"> Direction and height grid</label>
+            <label class="checkRow"><input type="checkbox" id="showBelowHorizonCheckbox"> Show stars below the horizon</label>
+        </div>
+
+        <div id="viewReadout"></div>
+        <div id="siderealReadout"></div>
+        <div id="deepSkyKey">Light blue marks are deep-sky objects. Ellipse = galaxy, dashed circle = open cluster, circle with cross = globular cluster, square = nebula, double circle = planetary nebula.</div>
+        <div id="helpText">This is the sky as you see it standing outside and looking up. Facing south, east is on your left. Drag to look around. Scroll or pinch to zoom.</div>
+    </div>
+</div>
+
+<div id="zoomPanel">
+    <button type="button" id="zoomInButton" title="Zoom in">+</button>
+    <button type="button" id="zoomOutButton" title="Zoom out">-</button>
+    <button type="button" id="resetViewButton" title="Reset view">Reset</button>
+</div>
+
+<script>
+// Display settings
+const BACKGROUND_COLOR = "#22396f";
+const GROUND_COLOR = "#0e1a3d";
+const HORIZON_COLOR = "rgba(190, 210, 255, 0.85)";
+const WHITE_STAR_COLOR = "#ffffff";
+const YELLOW_STAR_COLOR = "#ffe27a";
+const ORANGE_STAR_COLOR = "#ffa64d";
+const CONSTELLATION_LINE_COLOR = "rgba(160, 190, 255, 0.55)";
+const CONSTELLATION_NAME_COLOR = "#d6e4ff";
+const STAR_NAME_COLOR = "#fff3c4";
+const GRID_COLOR = "rgba(255, 255, 255, 0.16)";
+const GRID_LABEL_COLOR = "rgba(210, 225, 255, 0.75)";
+const CARDINAL_LABEL_COLOR = "#ffe9a8";
+const INTERCARDINAL_LABEL_COLOR = "#c9d8f5";
+const DEEP_SKY_COLOR = "#8fd3ff";
+const DEEP_SKY_LABEL_COLOR = "#a9dcff";
+const DEEP_SKY_FILL_COLOR = "rgba(143, 211, 255, 0.12)";
+
+// Limits and defaults for the look direction
+const DEFAULT_AZIMUTH_DEGREES = 180;
+const DEFAULT_ALTITUDE_DEGREES = 35;
+const DEFAULT_FIELD_OF_VIEW_DEGREES = 100;
+const MINIMUM_ALTITUDE_DEGREES = 2;
+const MAXIMUM_ALTITUDE_DEGREES = 89;
+const MINIMUM_FIELD_OF_VIEW_DEGREES = 5;
+const MAXIMUM_FIELD_OF_VIEW_DEGREES = 170;
+const HORIZON_STEP_DEGREES = 2;
+const MAXIMUM_DRAW_COORDINATE = 200000;
+
+const DEGREES_TO_RADIANS = Math.PI / 180;
+const RADIANS_TO_DEGREES = 180 / Math.PI;
+
+// Star catalog and constellation data
+const starCatalog = [];
+const starLookup = {};
+const constellations = [];
+
+function addStar(id, name, rightAscensionHours, declinationDegrees, magnitude, colorIndexBV) {
+    const star = {
+        id: id,
+        name: name,
+        rightAscensionHours: rightAscensionHours,
+        declinationDegrees: declinationDegrees,
+        magnitude: magnitude,
+        colorIndexBV: colorIndexBV,
+        east: 0,
+        north: 0,
+        up: 0,
+        screenX: 0,
+        screenY: 0,
+        depth: 0,
+        isVisible: false
+    };
+    starCatalog.push(star);
+    starLookup[id] = star;
+}
+
+function addConstellation(name, chains) {
+    const constellation = {
+        name: name,
+        chains: chains,
+        centerRightAscensionHours: 0,
+        centerDeclinationDegrees: 0
+    };
+    constellations.push(constellation);
+}
+
+// Ursa Minor
+addStar("polaris", "Polaris", 2.530, 89.26, 1.98, 0.60);
+addStar("yildun", "", 17.537, 86.59, 4.36, 0.06);
+addStar("epsilonUrsaeMinoris", "", 16.766, 82.04, 4.23, 0.89);
+addStar("zetaUrsaeMinoris", "", 15.735, 77.79, 4.32, 0.04);
+addStar("etaUrsaeMinoris", "", 16.292, 75.76, 4.95, 0.34);
+addStar("pherkad", "Pherkad", 15.345, 71.83, 3.05, 0.05);
+addStar("kochab", "Kochab", 14.845, 74.16, 2.08, 1.47);
+
+// Ursa Major
+addStar("dubhe", "Dubhe", 11.062, 61.75, 1.79, 1.07);
+addStar("merak", "Merak", 11.031, 56.38, 2.37, 0.00);
+addStar("phecda", "Phecda", 11.897, 53.69, 2.44, 0.00);
+addStar("megrez", "Megrez", 12.257, 57.03, 3.31, 0.08);
+addStar("alioth", "Alioth", 12.900, 55.96, 1.77, -0.02);
+addStar("mizar", "Mizar", 13.399, 54.93, 2.27, 0.02);
+addStar("alkaid", "Alkaid", 13.792, 49.31, 1.86, -0.19);
+addStar("muscida", "", 8.505, 60.72, 3.36, 0.85);
+addStar("thetaUrsaeMajoris", "", 9.547, 51.68, 3.17, 0.46);
+addStar("talitha", "", 8.987, 48.04, 3.14, 0.19);
+addStar("kappaUrsaeMajoris", "", 9.060, 47.16, 3.60, 0.00);
+addStar("psiUrsaeMajoris", "", 11.161, 44.50, 3.01, 1.14);
+addStar("taniaBorealis", "", 10.285, 42.91, 3.45, 0.03);
+addStar("taniaAustralis", "", 10.372, 41.50, 3.05, 1.59);
+addStar("chiUrsaeMajoris", "", 11.767, 47.78, 3.71, 1.20);
+addStar("alulaBorealis", "", 11.308, 33.09, 3.48, 1.40);
+addStar("alulaAustralis", "", 11.303, 31.53, 3.79, 0.59);
+
+// Draco
+addStar("thuban", "Thuban", 14.073, 64.38, 3.65, -0.05);
+addStar("rastaban", "Rastaban", 17.507, 52.30, 2.79, 0.99);
+addStar("eltanin", "Eltanin", 17.943, 51.49, 2.23, 1.52);
+addStar("grumium", "", 17.892, 56.87, 3.75, 1.15);
+addStar("kuma", "", 17.536, 55.17, 4.88, 0.08);
+addStar("altais", "", 19.209, 67.66, 3.07, 0.98);
+addStar("edasich", "", 15.415, 58.97, 3.29, 1.17);
+addStar("aldhibah", "", 17.147, 65.71, 3.17, -0.12);
+addStar("etaDraconis", "", 16.400, 61.51, 2.74, 0.91);
+addStar("chiDraconis", "", 18.350, 72.73, 3.57, 0.50);
+addStar("kappaDraconis", "", 12.558, 69.79, 3.87, -0.20);
+addStar("lambdaDraconis", "", 11.523, 69.33, 3.84, 1.60);
+
+// Cassiopeia
+addStar("caph", "Caph", 0.153, 59.15, 2.27, 0.38);
+addStar("schedar", "Schedar", 0.675, 56.54, 2.24, 1.17);
+addStar("navi", "Navi", 0.945, 60.72, 2.47, -0.15);
+addStar("ruchbah", "Ruchbah", 1.430, 60.24, 2.68, 0.13);
+addStar("segin", "", 1.907, 63.67, 3.38, -0.15);
+
+// Cepheus
+addStar("alderamin", "Alderamin", 21.310, 62.59, 2.51, 0.22);
+addStar("alfirk", "", 21.478, 70.56, 3.23, -0.22);
+addStar("errai", "", 23.655, 77.63, 3.21, 1.03);
+addStar("iotaCephei", "", 22.828, 66.20, 3.52, 1.28);
+addStar("zetaCephei", "", 22.181, 58.20, 3.35, 1.57);
+
+// Camelopardalis
+addStar("gammaCamelopardalis", "", 3.848, 71.33, 4.63, 0.00);
+addStar("alphaCamelopardalis", "", 4.901, 66.34, 4.29, -0.20);
+addStar("betaCamelopardalis", "", 5.057, 60.44, 4.03, 0.90);
+
+// Cygnus
+addStar("deneb", "Deneb", 20.690, 45.28, 1.25, 0.09);
+addStar("sadr", "Sadr", 20.370, 40.26, 2.20, 0.67);
+addStar("albireo", "Albireo", 19.512, 27.96, 3.18, 1.13);
+addStar("gienah", "", 20.770, 33.97, 2.46, 1.03);
+addStar("deltaCygni", "", 19.750, 45.13, 2.87, -0.03);
+
+// Lyra
+addStar("vega", "Vega", 18.616, 38.78, 0.03, 0.00);
+addStar("sheliak", "", 18.835, 33.36, 3.52, 0.00);
+addStar("sulafat", "", 18.982, 32.69, 3.25, -0.05);
+addStar("zetaLyrae", "", 18.746, 37.60, 4.34, 0.20);
+addStar("deltaLyrae", "", 18.908, 36.90, 4.30, 1.60);
+
+// Aquila
+addStar("altair", "Altair", 19.846, 8.87, 0.76, 0.22);
+addStar("tarazed", "Tarazed", 19.771, 10.61, 2.72, 1.52);
+addStar("alshain", "", 19.922, 6.41, 3.71, 0.86);
+addStar("deltaAquilae", "", 19.425, 3.11, 3.36, 0.32);
+addStar("zetaAquilae", "", 19.084, 13.86, 2.99, 0.01);
+addStar("thetaAquilae", "", 20.188, -0.82, 3.23, -0.07);
+addStar("lambdaAquilae", "", 19.104, -4.88, 3.44, -0.10);
+
+// Delphinus
+addStar("sualocin", "", 20.660, 15.91, 3.77, -0.01);
+addStar("rotanev", "", 20.627, 14.60, 3.63, 0.40);
+addStar("deltaDelphini", "", 20.724, 15.07, 4.43, 0.30);
+addStar("gammaDelphini", "", 20.778, 16.12, 4.27, 0.90);
+addStar("epsilonDelphini", "", 20.554, 11.30, 4.03, -0.03);
+
+// Sagitta
+addStar("gammaSagittae", "", 19.979, 19.49, 3.47, 1.57);
+addStar("deltaSagittae", "", 19.790, 18.53, 3.82, 1.40);
+addStar("alphaSagittae", "", 19.668, 18.01, 4.37, 0.80);
+addStar("betaSagittae", "", 19.684, 17.48, 4.37, 1.00);
+
+// Hercules
+addStar("kornephoros", "", 16.503, 21.49, 2.77, 0.94);
+addStar("zetaHerculis", "", 16.688, 31.60, 2.81, 0.65);
+addStar("etaHerculis", "", 16.715, 38.92, 3.53, 0.92);
+addStar("piHerculis", "", 17.251, 36.81, 3.16, 1.44);
+addStar("epsilonHerculis", "", 17.005, 30.93, 3.92, 0.05);
+addStar("sarin", "", 17.251, 24.84, 3.14, 0.08);
+addStar("rasalgethi", "Rasalgethi", 17.244, 14.39, 3.06, 1.16);
+
+// Ophiuchus
+addStar("rasalhague", "Rasalhague", 17.582, 12.56, 2.08, 0.16);
+addStar("cebalrai", "", 17.725, 4.57, 2.77, 1.17);
+addStar("sabik", "", 17.173, -15.73, 2.43, 0.06);
+addStar("han", "", 16.619, -10.57, 2.56, 0.04);
+addStar("yedPrior", "", 16.239, -3.69, 2.74, 1.58);
+addStar("yedPosterior", "", 16.305, -4.69, 3.24, 0.96);
+addStar("kappaOphiuchi", "", 16.961, 9.38, 3.20, 1.16);
+
+// Bootes
+addStar("arcturus", "Arcturus", 14.261, 19.18, -0.05, 1.23);
+addStar("izar", "Izar", 14.750, 27.07, 2.70, 0.97);
+addStar("muphrid", "", 13.912, 18.40, 2.68, 0.58);
+addStar("seginus", "", 14.535, 38.31, 3.03, 0.19);
+addStar("nekkar", "", 15.032, 40.39, 3.49, 0.97);
+addStar("rhoBootis", "", 14.530, 30.37, 3.58, 1.30);
+addStar("deltaBootis", "", 15.258, 33.31, 3.47, 0.96);
+
+// Corona Borealis
+addStar("alphecca", "Alphecca", 15.578, 26.71, 2.23, -0.02);
+addStar("nusakan", "", 15.464, 29.11, 3.68, 0.29);
+addStar("thetaCoronaeBorealis", "", 15.565, 31.36, 4.14, -0.15);
+addStar("gammaCoronaeBorealis", "", 15.712, 26.30, 3.84, -0.10);
+addStar("deltaCoronaeBorealis", "", 15.817, 26.07, 4.63, 0.80);
+addStar("epsilonCoronaeBorealis", "", 15.960, 26.88, 4.15, 1.20);
+
+// Canes Venatici
+addStar("corCaroli", "Cor Caroli", 12.934, 38.32, 2.89, -0.12);
+addStar("chara", "", 12.562, 41.36, 4.26, 0.59);
+
+// Coma Berenices
+addStar("gammaComae", "", 12.447, 28.27, 4.36, 1.10);
+addStar("betaComae", "", 13.198, 27.88, 4.26, 0.57);
+addStar("alphaComae", "", 13.166, 17.53, 4.32, 0.40);
+
+// Leo
+addStar("regulus", "Regulus", 10.139, 11.97, 1.35, -0.11);
+addStar("denebola", "Denebola", 11.818, 14.57, 2.14, 0.09);
+addStar("algieba", "Algieba", 10.333, 19.84, 2.01, 1.15);
+addStar("zosma", "Zosma", 11.235, 20.52, 2.56, 0.12);
+addStar("chertan", "", 11.237, 15.43, 3.34, -0.01);
+addStar("adhafera", "", 10.278, 23.42, 3.44, 0.31);
+addStar("algenubi", "", 9.764, 23.77, 2.98, 0.81);
+addStar("rasalas", "", 9.880, 26.01, 3.88, 1.22);
+addStar("etaLeonis", "", 10.122, 16.76, 3.52, -0.03);
+
+// Leo Minor
+addStar("praecipua", "", 10.888, 34.21, 3.83, 1.04);
+addStar("betaLeonisMinoris", "", 10.465, 36.71, 4.21, 0.90);
+
+// Lynx
+addStar("alphaLyncis", "", 9.351, 34.39, 3.13, 1.55);
+addStar("thirtyEightLyncis", "", 9.314, 36.80, 3.82, 0.07);
+addStar("tenUrsaeMajoris", "", 9.011, 41.78, 3.96, 0.43);
+
+// Virgo
+addStar("spica", "Spica", 13.420, -11.16, 0.97, -0.23);
+addStar("porrima", "", 12.694, -1.45, 2.74, 0.36);
+addStar("vindemiatrix", "", 13.036, 10.96, 2.83, 0.93);
+addStar("zavijava", "", 11.845, 1.76, 3.61, 0.55);
+addStar("heze", "", 13.578, -0.60, 3.37, 0.11);
+addStar("minelauva", "", 12.927, 3.40, 3.38, 1.57);
+
+// Libra
+addStar("zubenelgenubi", "", 14.848, -16.04, 2.75, 0.15);
+addStar("zubeneschamali", "", 15.283, -9.38, 2.61, -0.11);
+addStar("zubenelhakrabi", "", 15.592, -14.79, 3.91, 0.98);
+
+// Hydra
+addStar("alphard", "Alphard", 9.460, -8.66, 1.98, 1.44);
+
+// Cancer
+addStar("acubens", "", 8.975, 11.86, 4.25, 0.14);
+addStar("altarf", "", 8.275, 9.19, 3.52, 1.48);
+addStar("asellusAustralis", "", 8.745, 18.15, 3.94, 1.08);
+addStar("asellusBorealis", "", 8.722, 21.47, 4.66, 0.03);
+addStar("iotaCancri", "", 8.778, 28.76, 4.02, 0.97);
+
+// Gemini
+addStar("castor", "Castor", 7.576, 31.89, 1.58, 0.03);
+addStar("pollux", "Pollux", 7.755, 28.03, 1.16, 1.00);
+addStar("alhena", "Alhena", 6.629, 16.40, 1.93, 0.00);
+addStar("tejat", "", 6.383, 22.51, 2.87, 1.64);
+addStar("mebsuta", "", 6.732, 25.13, 2.98, 1.40);
+addStar("wasat", "", 7.335, 21.98, 3.53, 0.34);
+addStar("propus", "", 6.248, 22.51, 3.28, 1.60);
+addStar("mekbuda", "", 7.069, 20.57, 3.79, 0.80);
+
+// Canis Minor
+addStar("procyon", "Procyon", 7.655, 5.22, 0.34, 0.42);
+addStar("gomeisa", "", 7.453, 8.29, 2.89, -0.09);
+
+// Canis Major
+addStar("sirius", "Sirius", 6.752, -16.72, -1.46, 0.00);
+addStar("mirzam", "", 6.378, -17.96, 1.98, -0.24);
+
+// Orion
+addStar("betelgeuse", "Betelgeuse", 5.919, 7.41, 0.50, 1.85);
+addStar("rigel", "Rigel", 5.242, -8.20, 0.13, -0.03);
+addStar("bellatrix", "Bellatrix", 5.419, 6.35, 1.64, -0.22);
+addStar("mintaka", "Mintaka", 5.533, -0.30, 2.23, -0.17);
+addStar("alnilam", "Alnilam", 5.603, -1.20, 1.69, -0.18);
+addStar("alnitak", "Alnitak", 5.679, -1.94, 1.77, -0.21);
+addStar("saiph", "Saiph", 5.796, -9.67, 2.06, -0.17);
+addStar("meissa", "", 5.585, 9.93, 3.54, -0.18);
+
+// Taurus
+addStar("aldebaran", "Aldebaran", 4.599, 16.51, 0.85, 1.54);
+addStar("elnath", "Elnath", 5.438, 28.61, 1.65, -0.13);
+addStar("zetaTauri", "", 5.627, 21.14, 3.00, -0.20);
+addStar("epsilonTauri", "", 4.477, 19.18, 3.53, 1.01);
+addStar("gammaTauri", "", 4.330, 15.63, 3.65, 0.99);
+addStar("deltaTauri", "", 4.382, 17.54, 3.76, 0.98);
+addStar("thetaTauri", "", 4.478, 15.87, 3.40, 0.18);
+addStar("lambdaTauri", "", 4.011, 12.49, 3.47, -0.12);
+addStar("alcyone", "Alcyone", 3.791, 24.11, 2.87, -0.09);
+
+// Auriga
+addStar("capella", "Capella", 5.278, 46.00, 0.08, 0.80);
+addStar("menkalinan", "", 5.992, 44.95, 1.90, 0.08);
+addStar("thetaAurigae", "", 5.995, 37.21, 2.65, -0.08);
+addStar("hassaleh", "", 4.950, 33.17, 2.69, 1.53);
+
+// Perseus
+addStar("mirfak", "Mirfak", 3.405, 49.86, 1.79, 0.48);
+addStar("algol", "Algol", 3.136, 40.96, 2.12, -0.05);
+addStar("epsilonPersei", "", 3.964, 40.01, 2.89, -0.18);
+addStar("zetaPersei", "", 3.902, 31.88, 2.85, -0.20);
+addStar("gammaPersei", "", 3.080, 53.51, 2.93, 0.70);
+addStar("deltaPersei", "", 3.715, 47.79, 3.01, -0.13);
+addStar("etaPersei", "", 2.845, 55.90, 3.76, 1.70);
+
+// Andromeda
+addStar("alpheratz", "Alpheratz", 0.140, 29.09, 2.06, -0.11);
+addStar("mirach", "Mirach", 1.162, 35.62, 2.05, 1.58);
+addStar("almach", "Almach", 2.065, 42.33, 2.10, 1.37);
+addStar("deltaAndromedae", "", 0.655, 30.86, 3.27, 1.28);
+addStar("muAndromedae", "", 0.945, 38.50, 3.87, 0.10);
+addStar("nuAndromedae", "", 0.818, 41.08, 4.53, 0.10);
+
+// Pegasus
+addStar("markab", "Markab", 23.079, 15.21, 2.49, -0.04);
+addStar("scheat", "Scheat", 23.063, 28.08, 2.42, 1.67);
+addStar("algenib", "", 0.220, 15.18, 2.83, -0.19);
+addStar("enif", "Enif", 21.736, 9.88, 2.39, 1.52);
+addStar("homam", "", 22.691, 10.83, 3.40, -0.09);
+addStar("matar", "", 22.717, 30.22, 2.94, 0.86);
+addStar("biham", "", 22.170, 6.20, 3.53, 0.08);
+
+// Aries
+addStar("hamal", "Hamal", 2.120, 23.46, 2.00, 1.15);
+addStar("sheratan", "", 1.911, 20.81, 2.64, 0.13);
+addStar("mesarthim", "", 1.892, 19.29, 3.86, 0.00);
+addStar("fortyOneArietis", "", 2.818, 27.26, 3.63, -0.10);
+
+// Triangulum
+addStar("betaTrianguli", "", 2.159, 34.99, 3.00, 0.14);
+addStar("alphaTrianguli", "", 1.884, 29.58, 3.41, 0.50);
+addStar("gammaTrianguli", "", 2.288, 33.85, 4.01, 0.00);
+
+// Lacerta
+addStar("alphaLacertae", "", 22.522, 50.28, 3.77, 0.00);
+addStar("betaLacertae", "", 22.392, 52.23, 4.43, 1.00);
+
+// Constellation figures
+addConstellation("Ursa Minor", [
+    ["polaris", "yildun", "epsilonUrsaeMinoris", "zetaUrsaeMinoris", "etaUrsaeMinoris", "pherkad", "kochab", "zetaUrsaeMinoris"]
+]);
+addConstellation("Ursa Major", [
+    ["dubhe", "merak", "phecda", "megrez", "dubhe"],
+    ["megrez", "alioth", "mizar", "alkaid"],
+    ["dubhe", "muscida", "thetaUrsaeMajoris", "talitha", "kappaUrsaeMajoris"],
+    ["merak", "psiUrsaeMajoris", "taniaBorealis", "taniaAustralis"],
+    ["phecda", "chiUrsaeMajoris", "alulaBorealis", "alulaAustralis"]
+]);
+addConstellation("Draco", [
+    ["lambdaDraconis", "kappaDraconis", "thuban", "edasich", "etaDraconis", "aldhibah", "chiDraconis", "altais", "grumium"],
+    ["eltanin", "rastaban", "kuma", "grumium", "eltanin"]
+]);
+addConstellation("Cassiopeia", [
+    ["caph", "schedar", "navi", "ruchbah", "segin"]
+]);
+addConstellation("Cepheus", [
+    ["alderamin", "alfirk", "errai", "iotaCephei", "alderamin"],
+    ["alderamin", "zetaCephei"]
+]);
+addConstellation("Camelopardalis", [
+    ["gammaCamelopardalis", "alphaCamelopardalis", "betaCamelopardalis"]
+]);
+addConstellation("Cygnus", [
+    ["deneb", "sadr", "albireo"],
+    ["gienah", "sadr", "deltaCygni"]
+]);
+addConstellation("Lyra", [
+    ["vega", "zetaLyrae", "sheliak", "sulafat", "deltaLyrae", "zetaLyrae"]
+]);
+addConstellation("Aquila", [
+    ["tarazed", "altair", "alshain"],
+    ["altair", "deltaAquilae", "lambdaAquilae"],
+    ["deltaAquilae", "zetaAquilae"],
+    ["alshain", "thetaAquilae"]
+]);
+addConstellation("Delphinus", [
+    ["sualocin", "rotanev", "deltaDelphini", "gammaDelphini", "sualocin"],
+    ["rotanev", "epsilonDelphini"]
+]);
+addConstellation("Sagitta", [
+    ["gammaSagittae", "deltaSagittae", "alphaSagittae"],
+    ["deltaSagittae", "betaSagittae"]
+]);
+addConstellation("Hercules", [
+    ["etaHerculis", "zetaHerculis", "epsilonHerculis", "piHerculis", "etaHerculis"],
+    ["zetaHerculis", "kornephoros"],
+    ["epsilonHerculis", "sarin", "rasalgethi"]
+]);
+addConstellation("Ophiuchus", [
+    ["rasalhague", "kappaOphiuchi", "yedPrior", "yedPosterior", "han", "sabik", "cebalrai", "rasalhague"]
+]);
+addConstellation("Bootes", [
+    ["arcturus", "izar", "deltaBootis", "nekkar", "seginus", "rhoBootis", "arcturus"],
+    ["arcturus", "muphrid"]
+]);
+addConstellation("Corona Borealis", [
+    ["thetaCoronaeBorealis", "nusakan", "alphecca", "gammaCoronaeBorealis", "deltaCoronaeBorealis", "epsilonCoronaeBorealis"]
+]);
+addConstellation("Canes Venatici", [
+    ["corCaroli", "chara"]
+]);
+addConstellation("Coma Berenices", [
+    ["gammaComae", "betaComae", "alphaComae"]
+]);
+addConstellation("Leo", [
+    ["regulus", "etaLeonis", "algieba", "adhafera", "rasalas", "algenubi"],
+    ["regulus", "chertan", "denebola", "zosma", "algieba"],
+    ["chertan", "zosma"]
+]);
+addConstellation("Leo Minor", [
+    ["praecipua", "betaLeonisMinoris"]
+]);
+addConstellation("Lynx", [
+    ["alphaLyncis", "thirtyEightLyncis", "tenUrsaeMajoris"]
+]);
+addConstellation("Virgo", [
+    ["zavijava", "porrima", "minelauva", "vindemiatrix"],
+    ["porrima", "heze", "spica"]
+]);
+addConstellation("Libra", [
+    ["zubenelgenubi", "zubeneschamali", "zubenelhakrabi"]
+]);
+addConstellation("Hydra", [
+    ["alphard"]
+]);
+addConstellation("Cancer", [
+    ["altarf", "asellusAustralis", "acubens"],
+    ["asellusAustralis", "asellusBorealis", "iotaCancri"]
+]);
+addConstellation("Gemini", [
+    ["castor", "pollux"],
+    ["castor", "mebsuta", "tejat", "propus"],
+    ["pollux", "wasat", "mekbuda", "alhena"],
+    ["mebsuta", "wasat"]
+]);
+addConstellation("Canis Minor", [
+    ["gomeisa", "procyon"]
+]);
+addConstellation("Canis Major", [
+    ["sirius", "mirzam"]
+]);
+addConstellation("Orion", [
+    ["betelgeuse", "alnitak", "saiph"],
+    ["bellatrix", "mintaka", "rigel"],
+    ["mintaka", "alnilam", "alnitak"],
+    ["meissa", "betelgeuse"],
+    ["meissa", "bellatrix"]
+]);
+addConstellation("Taurus", [
+    ["lambdaTauri", "gammaTauri", "deltaTauri", "epsilonTauri"],
+    ["gammaTauri", "thetaTauri", "aldebaran", "elnath"],
+    ["aldebaran", "zetaTauri"]
+]);
+addConstellation("Auriga", [
+    ["capella", "menkalinan", "thetaAurigae", "elnath", "hassaleh", "capella"]
+]);
+addConstellation("Perseus", [
+    ["etaPersei", "gammaPersei", "mirfak", "deltaPersei", "epsilonPersei", "zetaPersei"],
+    ["mirfak", "algol"]
+]);
+addConstellation("Andromeda", [
+    ["alpheratz", "deltaAndromedae", "mirach", "almach"],
+    ["mirach", "muAndromedae", "nuAndromedae"]
+]);
+addConstellation("Pegasus", [
+    ["markab", "scheat", "alpheratz", "algenib", "markab"],
+    ["scheat", "matar"],
+    ["markab", "homam", "biham", "enif"]
+]);
+addConstellation("Aries", [
+    ["mesarthim", "sheratan", "hamal", "fortyOneArietis"]
+]);
+addConstellation("Triangulum", [
+    ["alphaTrianguli", "betaTrianguli", "gammaTrianguli", "alphaTrianguli"]
+]);
+addConstellation("Lacerta", [
+    ["alphaLacertae", "betaLacertae"]
+]);
+
+// Place each constellation name at the average direction of its stars
+function calculateConstellationCenter(constellation) {
+    const alreadyCounted = {};
+    let sumX = 0;
+    let sumY = 0;
+    let sumZ = 0;
+    let starCount = 0;
+
+    for (let chainIndex = 0; chainIndex < constellation.chains.length; chainIndex = chainIndex + 1) {
+        const chain = constellation.chains[chainIndex];
+        for (let starIndex = 0; starIndex < chain.length; starIndex = starIndex + 1) {
+            const starId = chain[starIndex];
+            if (alreadyCounted[starId] === true) {
+                continue;
+            }
+            alreadyCounted[starId] = true;
+            const star = starLookup[starId];
+            const rightAscensionRadians = star.rightAscensionHours * 15 * DEGREES_TO_RADIANS;
+            const declinationRadians = star.declinationDegrees * DEGREES_TO_RADIANS;
+            sumX = sumX + Math.cos(declinationRadians) * Math.cos(rightAscensionRadians);
+            sumY = sumY + Math.cos(declinationRadians) * Math.sin(rightAscensionRadians);
+            sumZ = sumZ + Math.sin(declinationRadians);
+            starCount = starCount + 1;
+        }
+    }
+
+    const averageX = sumX / starCount;
+    const averageY = sumY / starCount;
+    const averageZ = sumZ / starCount;
+    let centerRightAscensionDegrees = Math.atan2(averageY, averageX) * RADIANS_TO_DEGREES;
+    if (centerRightAscensionDegrees < 0) {
+        centerRightAscensionDegrees = centerRightAscensionDegrees + 360;
+    }
+    const horizontalLength = Math.sqrt(averageX * averageX + averageY * averageY);
+    constellation.centerRightAscensionHours = centerRightAscensionDegrees / 15;
+    constellation.centerDeclinationDegrees = Math.atan2(averageZ, horizontalLength) * RADIANS_TO_DEGREES;
+}
+
+function calculateAllConstellationCenters() {
+    for (let index = 0; index < constellations.length; index = index + 1) {
+        calculateConstellationCenter(constellations[index]);
+    }
+}
+
+calculateAllConstellationCenters();
+
+// Deep-sky objects
+// Size is the apparent width in arcminutes
+const deepSkyObjects = [];
+
+function addDeepSkyObject(id, name, objectType, rightAscensionHours, declinationDegrees, magnitude, sizeArcMinutes) {
+    const deepSkyObject = {
+        id: id,
+        name: name,
+        objectType: objectType,
+        rightAscensionHours: rightAscensionHours,
+        declinationDegrees: declinationDegrees,
+        magnitude: magnitude,
+        sizeArcMinutes: sizeArcMinutes,
+        east: 0,
+        north: 0,
+        up: 0,
+        screenX: 0,
+        screenY: 0,
+        depth: 0,
+        isVisible: false
+    };
+    deepSkyObjects.push(deepSkyObject);
+}
+
+// Galaxies
+addDeepSkyObject("m31", "M31 Andromeda Galaxy", "galaxy", 0.712, 41.27, 3.4, 190);
+addDeepSkyObject("m33", "M33 Triangulum Galaxy", "galaxy", 1.564, 30.66, 5.7, 71);
+addDeepSkyObject("m81", "M81 Bode's Galaxy", "galaxy", 9.926, 69.07, 6.9, 27);
+addDeepSkyObject("m82", "M82 Cigar Galaxy", "galaxy", 9.931, 69.68, 8.4, 11);
+addDeepSkyObject("m51", "M51 Whirlpool Galaxy", "galaxy", 13.498, 47.20, 8.4, 11);
+
+// Open clusters
+addDeepSkyObject("m45", "M45 Pleiades", "open cluster", 3.790, 24.12, 1.6, 110);
+addDeepSkyObject("doubleCluster", "Double Cluster", "open cluster", 2.345, 57.13, 3.7, 60);
+addDeepSkyObject("m44", "M44 Beehive Cluster", "open cluster", 8.673, 19.67, 3.7, 95);
+addDeepSkyObject("m41", "M41", "open cluster", 6.767, -20.73, 4.5, 38);
+addDeepSkyObject("m34", "M34", "open cluster", 2.701, 42.78, 5.2, 35);
+addDeepSkyObject("m35", "M35", "open cluster", 6.148, 24.33, 5.3, 28);
+addDeepSkyObject("m36", "M36", "open cluster", 5.605, 34.14, 6.0, 12);
+addDeepSkyObject("m37", "M37", "open cluster", 5.872, 32.55, 6.2, 24);
+addDeepSkyObject("m38", "M38", "open cluster", 5.478, 35.85, 6.4, 21);
+addDeepSkyObject("m11", "M11 Wild Duck Cluster", "open cluster", 18.851, -6.27, 6.3, 14);
+
+// Globular clusters
+addDeepSkyObject("m13", "M13 Hercules Cluster", "globular cluster", 16.695, 36.46, 5.8, 20);
+addDeepSkyObject("m22", "M22", "globular cluster", 18.607, -23.90, 5.1, 32);
+addDeepSkyObject("m5", "M5", "globular cluster", 15.309, 2.08, 5.6, 17);
+addDeepSkyObject("m3", "M3", "globular cluster", 13.703, 28.38, 6.2, 18);
+addDeepSkyObject("m15", "M15", "globular cluster", 21.500, 12.17, 6.2, 18);
+addDeepSkyObject("m92", "M92", "globular cluster", 17.285, 43.14, 6.3, 14);
+
+// Nebulae
+addDeepSkyObject("m42", "M42 Orion Nebula", "nebula", 5.588, -5.39, 4.0, 85);
+addDeepSkyObject("m8", "M8 Lagoon Nebula", "nebula", 18.060, -24.38, 6.0, 90);
+addDeepSkyObject("m27", "M27 Dumbbell Nebula", "planetary nebula", 19.993, 22.72, 7.5, 8);
+addDeepSkyObject("m57", "M57 Ring Nebula", "planetary nebula", 18.893, 33.03, 8.8, 1.4);
+
+// Brighter objects come first so that their labels win when labels overlap
+function compareDeepSkyByMagnitude(firstObject, secondObject) {
+    return firstObject.magnitude - secondObject.magnitude;
+}
+
+deepSkyObjects.sort(compareDeepSkyByMagnitude);
+
+// Page elements
+const skyCanvas = document.getElementById("skyCanvas");
+const drawingContext = skyCanvas.getContext("2d");
+const dateTimeInput = document.getElementById("dateTimeInput");
+const latitudeInput = document.getElementById("latitudeInput");
+const longitudeInput = document.getElementById("longitudeInput");
+const locationButton = document.getElementById("locationButton");
+const locationStatus = document.getElementById("locationStatus");
+const followClockCheckbox = document.getElementById("followClockCheckbox");
+const showLinesCheckbox = document.getElementById("showLinesCheckbox");
+const showConstellationNamesCheckbox = document.getElementById("showConstellationNamesCheckbox");
+const showStarNamesCheckbox = document.getElementById("showStarNamesCheckbox");
+const showDeepSkyCheckbox = document.getElementById("showDeepSkyCheckbox");
+const showGridCheckbox = document.getElementById("showGridCheckbox");
+const showBelowHorizonCheckbox = document.getElementById("showBelowHorizonCheckbox");
+const viewReadout = document.getElementById("viewReadout");
+const siderealReadout = document.getElementById("siderealReadout");
+const panelBody = document.getElementById("panelBody");
+const togglePanelButton = document.getElementById("togglePanelButton");
+const nowButton = document.getElementById("nowButton");
+const zoomInButton = document.getElementById("zoomInButton");
+const zoomOutButton = document.getElementById("zoomOutButton");
+const resetViewButton = document.getElementById("resetViewButton");
+
+// View state
+let canvasWidth = 0;
+let canvasHeight = 0;
+let viewAzimuthDegrees = DEFAULT_AZIMUTH_DEGREES;
+let viewAltitudeDegrees = DEFAULT_ALTITUDE_DEGREES;
+let fieldOfViewDegrees = DEFAULT_FIELD_OF_VIEW_DEGREES;
+let displayedDate = new Date();
+let redrawIsScheduled = false;
+
+// Camera basis vectors in east, north, up coordinates
+const camera = {
+    forwardEast: 0,
+    forwardNorth: 0,
+    forwardUp: 0,
+    rightEast: 0,
+    rightNorth: 0,
+    upEast: 0,
+    upNorth: 0,
+    upUp: 0,
+    pixelsPerUnit: 1
+};
+
+// Reusable result objects
+const projectionResult = { x: 0, y: 0, depth: 0 };
+const horizontalResult = { east: 0, north: 0, up: 0 };
+
+function padTwoDigits(number) {
+    let text = String(number);
+    if (text.length < 2) {
+        text = "0" + text;
+    }
+    return text;
+}
+
+// Build the text format that a datetime-local input expects
+function formatDateForInput(dateValue) {
+    const year = dateValue.getFullYear();
+    const month = padTwoDigits(dateValue.getMonth() + 1);
+    const day = padTwoDigits(dateValue.getDate());
+    const hours = padTwoDigits(dateValue.getHours());
+    const minutes = padTwoDigits(dateValue.getMinutes());
+    return year + "-" + month + "-" + day + "T" + hours + ":" + minutes;
+}
+
+// Local sidereal time in degrees for a moment in time and an east longitude
+function calculateLocalSiderealDegrees(dateValue, longitudeDegrees) {
+    const julianDate = dateValue.getTime() / 86400000 + 2440587.5;
+    const daysSinceJ2000 = julianDate - 2451545.0;
+    const greenwichDegrees = 280.46061837 + 360.98564736629 * daysSinceJ2000;
+    let localDegrees = (greenwichDegrees + longitudeDegrees) % 360;
+    if (localDegrees < 0) {
+        localDegrees = localDegrees + 360;
+    }
+    return localDegrees;
+}
+
+function readLatitudeDegrees() {
+    let latitudeDegrees = parseFloat(latitudeInput.value);
+    if (isNaN(latitudeDegrees)) {
+        latitudeDegrees = 0;
+    }
+    if (latitudeDegrees > 90) {
+        latitudeDegrees = 90;
+    }
+    if (latitudeDegrees < -90) {
+        latitudeDegrees = -90;
+    }
+    return latitudeDegrees;
+}
+
+function readLongitudeDegrees() {
+    let longitudeDegrees = parseFloat(longitudeInput.value);
+    if (isNaN(longitudeDegrees)) {
+        longitudeDegrees = 0;
+    }
+    return longitudeDegrees;
+}
+
+// Convert a sky position to a unit vector with east, north and up parts for the observer
+function calculateHorizontalVector(rightAscensionHours, declinationDegrees, siderealDegrees, latitudeDegrees, result) {
+    const hourAngleRadians = (siderealDegrees - rightAscensionHours * 15) * DEGREES_TO_RADIANS;
+    const declinationRadians = declinationDegrees * DEGREES_TO_RADIANS;
+    const latitudeRadians = latitudeDegrees * DEGREES_TO_RADIANS;
+    const cosDeclination = Math.cos(declinationRadians);
+    const sinDeclination = Math.sin(declinationRadians);
+    const cosLatitude = Math.cos(latitudeRadians);
+    const sinLatitude = Math.sin(latitudeRadians);
+    const cosHourAngle = Math.cos(hourAngleRadians);
+    const sinHourAngle = Math.sin(hourAngleRadians);
+    result.east = -cosDeclination * sinHourAngle;
+    result.north = sinDeclination * cosLatitude - cosDeclination * cosHourAngle * sinLatitude;
+    result.up = sinDeclination * sinLatitude + cosDeclination * cosHourAngle * cosLatitude;
+}
+
+function getPixelsPerUnit() {
+    const halfSize = Math.min(canvasWidth, canvasHeight) / 2;
+    return halfSize / (2 * Math.tan(fieldOfViewDegrees * DEGREES_TO_RADIANS / 4));
+}
+
+// Build the camera from the look direction
+function updateCamera() {
+    const azimuthRadians = viewAzimuthDegrees * DEGREES_TO_RADIANS;
+    const altitudeRadians = viewAltitudeDegrees * DEGREES_TO_RADIANS;
+    camera.forwardEast = Math.sin(azimuthRadians) * Math.cos(altitudeRadians);
+    camera.forwardNorth = Math.cos(azimuthRadians) * Math.cos(altitudeRadians);
+    camera.forwardUp = Math.sin(altitudeRadians);
+    camera.rightEast = Math.cos(azimuthRadians);
+    camera.rightNorth = -Math.sin(azimuthRadians);
+    camera.upEast = camera.rightNorth * camera.forwardUp;
+    camera.upNorth = -camera.rightEast * camera.forwardUp;
+    camera.upUp = camera.rightEast * camera.forwardNorth - camera.rightNorth * camera.forwardEast;
+    camera.pixelsPerUnit = getPixelsPerUnit();
+}
+
+// Stereographic projection centered on the look direction
+// Right on the screen is to the observer's right
+function projectDirection(east, north, up, result) {
+    const depth = east * camera.forwardEast + north * camera.forwardNorth + up * camera.forwardUp;
+    const rightAmount = east * camera.rightEast + north * camera.rightNorth;
+    const upAmount = east * camera.upEast + north * camera.upNorth + up * camera.upUp;
+    let denominator = 1 + depth;
+    if (denominator < 0.0001) {
+        denominator = 0.0001;
+    }
+    const scaleFactor = 2 / denominator;
+    result.x = canvasWidth / 2 + rightAmount * scaleFactor * camera.pixelsPerUnit;
+    result.y = canvasHeight / 2 - upAmount * scaleFactor * camera.pixelsPerUnit;
+    result.depth = depth;
+}
+
+// Orange for cool stars, yellow for mid-temperature stars, white for hot stars
+function getStarColor(colorIndexBV) {
+    if (colorIndexBV < 0.45) {
+        return WHITE_STAR_COLOR;
+    }
+    if (colorIndexBV < 0.95) {
+        return YELLOW_STAR_COLOR;
+    }
+    return ORANGE_STAR_COLOR;
+}
+
+// Zoom factor is 1 at the default field of view and grows as the view narrows
+function getZoomFactor() {
+    return DEFAULT_FIELD_OF_VIEW_DEGREES / fieldOfViewDegrees;
+}
+
+// Brighter stars are drawn larger
+function getStarRadius(magnitude) {
+    let radius = 4.6 - 0.9 * magnitude;
+    if (radius < 1.0) {
+        radius = 1.0;
+    }
+    radius = radius * Math.pow(getZoomFactor(), 0.35);
+    if (radius > 14) {
+        radius = 14;
+    }
+    return radius;
+}
+
+function drawHaloText(text, x, y) {
+    drawingContext.lineWidth = 3;
+    drawingContext.strokeStyle = BACKGROUND_COLOR;
+    drawingContext.strokeText(text, x, y);
+    drawingContext.fillText(text, x, y);
+}
+
+function isOnScreen(x, y, margin) {
+    if (x < -margin || x > canvasWidth + margin) {
+        return false;
+    }
+    if (y < -margin || y > canvasHeight + margin) {
+        return false;
+    }
+    return true;
+}
+
+function updateStarPositions(siderealDegrees, latitudeDegrees) {
+    const showBelowHorizon = showBelowHorizonCheckbox.checked;
+    for (let index = 0; index < starCatalog.length; index = index + 1) {
+        const star = starCatalog[index];
+        calculateHorizontalVector(star.rightAscensionHours, star.declinationDegrees, siderealDegrees, latitudeDegrees, horizontalResult);
+        star.east = horizontalResult.east;
+        star.north = horizontalResult.north;
+        star.up = horizontalResult.up;
+        projectDirection(star.east, star.north, star.up, projectionResult);
+        star.screenX = projectionResult.x;
+        star.screenY = projectionResult.y;
+        star.depth = projectionResult.depth;
+        star.isVisible = false;
+        if (star.depth > 0) {
+            if (star.up >= 0 || showBelowHorizon === true) {
+                star.isVisible = true;
+            }
+        }
+    }
+}
+
+function drawConstellationLines() {
+    drawingContext.lineWidth = 1;
+    drawingContext.strokeStyle = CONSTELLATION_LINE_COLOR;
+    drawingContext.beginPath();
+    for (let constellationIndex = 0; constellationIndex < constellations.length; constellationIndex = constellationIndex + 1) {
+        const constellation = constellations[constellationIndex];
+        for (let chainIndex = 0; chainIndex < constellation.chains.length; chainIndex = chainIndex + 1) {
+            const chain = constellation.chains[chainIndex];
+            for (let starIndex = 1; starIndex < chain.length; starIndex = starIndex + 1) {
+                const previousStar = starLookup[chain[starIndex - 1]];
+                const currentStar = starLookup[chain[starIndex]];
+                if (previousStar.isVisible === true && currentStar.isVisible === true) {
+                    drawingContext.moveTo(previousStar.screenX, previousStar.screenY);
+                    drawingContext.lineTo(currentStar.screenX, currentStar.screenY);
+                }
+            }
+        }
+    }
+    drawingContext.stroke();
+}
+
+function drawStars() {
+    for (let index = 0; index < starCatalog.length; index = index + 1) {
+        const star = starCatalog[index];
+        if (star.isVisible === false) {
+            continue;
+        }
+        if (isOnScreen(star.screenX, star.screenY, 30) === false) {
+            continue;
+        }
+        const radius = getStarRadius(star.magnitude);
+        const color = getStarColor(star.colorIndexBV);
+        drawingContext.shadowColor = color;
+        drawingContext.shadowBlur = radius * 2.5;
+        drawingContext.fillStyle = color;
+        drawingContext.beginPath();
+        drawingContext.arc(star.screenX, star.screenY, radius, 0, Math.PI * 2);
+        drawingContext.fill();
+    }
+    drawingContext.shadowBlur = 0;
+}
+
+// More star names appear as the view is zoomed in
+function drawStarNames() {
+    const magnitudeLimit = 2.0 + Math.log(getZoomFactor()) / Math.log(2);
+    drawingContext.font = "11px 'Segoe UI', Arial, sans-serif";
+    drawingContext.textAlign = "left";
+    drawingContext.textBaseline = "middle";
+    drawingContext.fillStyle = STAR_NAME_COLOR;
+    for (let index = 0; index < starCatalog.length; index = index + 1) {
+        const star = starCatalog[index];
+        if (star.name === "" || star.isVisible === false || star.up < 0) {
+            continue;
+        }
+        if (star.magnitude > magnitudeLimit) {
+            continue;
+        }
+        if (isOnScreen(star.screenX, star.screenY, 30) === false) {
+            continue;
+        }
+        const offset = getStarRadius(star.magnitude) + 4;
+        drawHaloText(star.name, star.screenX + offset, star.screenY);
+    }
+}
+
+function drawConstellationNames(siderealDegrees, latitudeDegrees) {
+    let fontSize = 12 + Math.log(getZoomFactor()) / Math.log(2) * 1.5;
+    if (fontSize < 11) {
+        fontSize = 11;
+    }
+    if (fontSize > 20) {
+        fontSize = 20;
+    }
+    drawingContext.font = "600 " + fontSize + "px 'Segoe UI', Arial, sans-serif";
+    drawingContext.textAlign = "center";
+    drawingContext.textBaseline = "middle";
+    drawingContext.fillStyle = CONSTELLATION_NAME_COLOR;
+    for (let index = 0; index < constellations.length; index = index + 1) {
+        const constellation = constellations[index];
+        calculateHorizontalVector(constellation.centerRightAscensionHours, constellation.centerDeclinationDegrees, siderealDegrees, latitudeDegrees, horizontalResult);
+        if (horizontalResult.up < 0) {
+            continue;
+        }
+        projectDirection(horizontalResult.east, horizontalResult.north, horizontalResult.up, projectionResult);
+        if (projectionResult.depth <= 0) {
+            continue;
+        }
+        if (isOnScreen(projectionResult.x, projectionResult.y, 60) === false) {
+            continue;
+        }
+        drawHaloText(constellation.name, projectionResult.x, projectionResult.y);
+    }
+}
+
+function updateDeepSkyPositions(siderealDegrees, latitudeDegrees) {
+    const showBelowHorizon = showBelowHorizonCheckbox.checked;
+    for (let index = 0; index < deepSkyObjects.length; index = index + 1) {
+        const deepSkyObject = deepSkyObjects[index];
+        calculateHorizontalVector(deepSkyObject.rightAscensionHours, deepSkyObject.declinationDegrees, siderealDegrees, latitudeDegrees, horizontalResult);
+        deepSkyObject.east = horizontalResult.east;
+        deepSkyObject.north = horizontalResult.north;
+        deepSkyObject.up = horizontalResult.up;
+        projectDirection(deepSkyObject.east, deepSkyObject.north, deepSkyObject.up, projectionResult);
+        deepSkyObject.screenX = projectionResult.x;
+        deepSkyObject.screenY = projectionResult.y;
+        deepSkyObject.depth = projectionResult.depth;
+        deepSkyObject.isVisible = false;
+        if (deepSkyObject.depth > 0) {
+            if (deepSkyObject.up >= 0 || showBelowHorizon === true) {
+                deepSkyObject.isVisible = true;
+            }
+        }
+    }
+}
+
+// Marker radius follows the apparent size, with a minimum so small objects stay findable
+function getDeepSkyRadius(deepSkyObject) {
+    const halfSizeRadians = deepSkyObject.sizeArcMinutes / 60 * DEGREES_TO_RADIANS / 2;
+    let radius = halfSizeRadians * camera.pixelsPerUnit;
+    if (radius < 6) {
+        radius = 6;
+    }
+    if (radius > 300) {
+        radius = 300;
+    }
+    return radius;
+}
+
+function drawDeepSkyMarkers() {
+    drawingContext.lineWidth = 1.5;
+    drawingContext.strokeStyle = DEEP_SKY_COLOR;
+    drawingContext.fillStyle = DEEP_SKY_FILL_COLOR;
+    for (let index = 0; index < deepSkyObjects.length; index = index + 1) {
+        const deepSkyObject = deepSkyObjects[index];
+        if (deepSkyObject.isVisible === false) {
+            continue;
+        }
+        const radius = getDeepSkyRadius(deepSkyObject);
+        if (isOnScreen(deepSkyObject.screenX, deepSkyObject.screenY, radius + 10) === false) {
+            continue;
+        }
+        const centerX = deepSkyObject.screenX;
+        const centerY = deepSkyObject.screenY;
+
+        drawingContext.setLineDash([]);
+        drawingContext.beginPath();
+        if (deepSkyObject.objectType === "galaxy") {
+            drawingContext.ellipse(centerX, centerY, radius, radius * 0.5, 0, 0, Math.PI * 2);
+        }
+        if (deepSkyObject.objectType === "open cluster") {
+            drawingContext.setLineDash([3, 3]);
+            drawingContext.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        }
+        if (deepSkyObject.objectType === "globular cluster") {
+            drawingContext.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            drawingContext.moveTo(centerX - radius, centerY);
+            drawingContext.lineTo(centerX + radius, centerY);
+            drawingContext.moveTo(centerX, centerY - radius);
+            drawingContext.lineTo(centerX, centerY + radius);
+        }
+        if (deepSkyObject.objectType === "nebula") {
+            drawingContext.rect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+        }
+        if (deepSkyObject.objectType === "planetary nebula") {
+            drawingContext.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            drawingContext.moveTo(centerX + radius * 0.5, centerY);
+            drawingContext.arc(centerX, centerY, radius * 0.5, 0, Math.PI * 2);
+        }
+        drawingContext.fill();
+        drawingContext.stroke();
+    }
+    drawingContext.setLineDash([]);
+}
+
+// Labels are drawn below the marker and skipped when they would overlap a label already drawn
+function drawDeepSkyLabels() {
+    const labelHeight = 13;
+    const usedRectangles = [];
+    drawingContext.font = "11px 'Segoe UI', Arial, sans-serif";
+    drawingContext.textAlign = "center";
+    drawingContext.textBaseline = "top";
+    drawingContext.fillStyle = DEEP_SKY_LABEL_COLOR;
+    for (let index = 0; index < deepSkyObjects.length; index = index + 1) {
+        const deepSkyObject = deepSkyObjects[index];
+        if (deepSkyObject.isVisible === false || deepSkyObject.up < 0) {
+            continue;
+        }
+        const radius = getDeepSkyRadius(deepSkyObject);
+        if (isOnScreen(deepSkyObject.screenX, deepSkyObject.screenY, 60) === false) {
+            continue;
+        }
+        const labelWidth = drawingContext.measureText(deepSkyObject.name).width;
+        const labelLeft = deepSkyObject.screenX - labelWidth / 2 - 2;
+        const labelRight = deepSkyObject.screenX + labelWidth / 2 + 2;
+        const labelTop = deepSkyObject.screenY + radius + 3;
+        const labelBottom = labelTop + labelHeight;
+
+        let overlapsUsedLabel = false;
+        for (let usedIndex = 0; usedIndex < usedRectangles.length; usedIndex = usedIndex + 1) {
+            const used = usedRectangles[usedIndex];
+            if (labelLeft < used.right && labelRight > used.left && labelTop < used.bottom && labelBottom > used.top) {
+                overlapsUsedLabel = true;
+            }
+        }
+        if (overlapsUsedLabel === true) {
+            continue;
+        }
+        usedRectangles.push({ left: labelLeft, right: labelRight, top: labelTop, bottom: labelBottom });
+        drawHaloText(deepSkyObject.name, deepSkyObject.screenX, labelTop);
+    }
+}
+
+// Curve drawing helpers that lift the pen when a point is behind the viewer
+let curvePenIsDown = false;
+
+function startCurve() {
+    curvePenIsDown = false;
+}
+
+function addCurvePoint(east, north, up) {
+    projectDirection(east, north, up, projectionResult);
+    if (projectionResult.depth <= 0) {
+        curvePenIsDown = false;
+        return;
+    }
+    if (curvePenIsDown === false) {
+        drawingContext.moveTo(projectionResult.x, projectionResult.y);
+        curvePenIsDown = true;
+    } else {
+        drawingContext.lineTo(projectionResult.x, projectionResult.y);
+    }
+}
+
+// Direction lines every 30 degrees and height circles at 30 and 60 degrees
+function drawDirectionGrid() {
+    drawingContext.lineWidth = 1;
+    drawingContext.strokeStyle = GRID_COLOR;
+    drawingContext.beginPath();
+
+    for (let azimuthDegrees = 0; azimuthDegrees < 360; azimuthDegrees = azimuthDegrees + 30) {
+        const azimuthRadians = azimuthDegrees * DEGREES_TO_RADIANS;
+        startCurve();
+        for (let altitudeDegrees = 0; altitudeDegrees <= 90; altitudeDegrees = altitudeDegrees + 5) {
+            const altitudeRadians = altitudeDegrees * DEGREES_TO_RADIANS;
+            addCurvePoint(Math.sin(azimuthRadians) * Math.cos(altitudeRadians), Math.cos(azimuthRadians) * Math.cos(altitudeRadians), Math.sin(altitudeRadians));
+        }
+    }
+
+    const circleAltitudes = [30, 60];
+    for (let circleIndex = 0; circleIndex < circleAltitudes.length; circleIndex = circleIndex + 1) {
+        const altitudeRadians = circleAltitudes[circleIndex] * DEGREES_TO_RADIANS;
+        startCurve();
+        for (let azimuthDegrees = 0; azimuthDegrees <= 360; azimuthDegrees = azimuthDegrees + 3) {
+            const azimuthRadians = azimuthDegrees * DEGREES_TO_RADIANS;
+            addCurvePoint(Math.sin(azimuthRadians) * Math.cos(altitudeRadians), Math.cos(azimuthRadians) * Math.cos(altitudeRadians), Math.sin(altitudeRadians));
+        }
+    }
+    drawingContext.stroke();
+
+    // Height labels placed along the look direction
+    drawingContext.font = "11px 'Segoe UI', Arial, sans-serif";
+    drawingContext.textAlign = "center";
+    drawingContext.textBaseline = "middle";
+    drawingContext.fillStyle = GRID_LABEL_COLOR;
+    const viewAzimuthRadians = viewAzimuthDegrees * DEGREES_TO_RADIANS;
+    for (let circleIndex = 0; circleIndex < circleAltitudes.length; circleIndex = circleIndex + 1) {
+        const labelAltitude = circleAltitudes[circleIndex];
+        const labelAltitudeRadians = labelAltitude * DEGREES_TO_RADIANS;
+        projectDirection(Math.sin(viewAzimuthRadians) * Math.cos(labelAltitudeRadians), Math.cos(viewAzimuthRadians) * Math.cos(labelAltitudeRadians), Math.sin(labelAltitudeRadians), projectionResult);
+        if (projectionResult.depth > 0 && isOnScreen(projectionResult.x, projectionResult.y, 0) === true) {
+            drawHaloText(labelAltitude + "\u00B0", projectionResult.x, projectionResult.y - 8);
+        }
+    }
+}
+
+// Sample the horizon circle in screen coordinates
+function buildHorizonPoints() {
+    const points = [];
+    for (let azimuthDegrees = 0; azimuthDegrees < 360; azimuthDegrees = azimuthDegrees + HORIZON_STEP_DEGREES) {
+        const azimuthRadians = azimuthDegrees * DEGREES_TO_RADIANS;
+        projectDirection(Math.sin(azimuthRadians), Math.cos(azimuthRadians), 0, projectionResult);
+        let pointX = projectionResult.x;
+        let pointY = projectionResult.y;
+        if (pointX > MAXIMUM_DRAW_COORDINATE) {
+            pointX = MAXIMUM_DRAW_COORDINATE;
+        }
+        if (pointX < -MAXIMUM_DRAW_COORDINATE) {
+            pointX = -MAXIMUM_DRAW_COORDINATE;
+        }
+        if (pointY > MAXIMUM_DRAW_COORDINATE) {
+            pointY = MAXIMUM_DRAW_COORDINATE;
+        }
+        if (pointY < -MAXIMUM_DRAW_COORDINATE) {
+            pointY = -MAXIMUM_DRAW_COORDINATE;
+        }
+        points.push({ x: pointX, y: pointY });
+    }
+    return points;
+}
+
+function traceHorizonPath(points) {
+    drawingContext.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index = index + 1) {
+        drawingContext.lineTo(points[index].x, points[index].y);
+    }
+    drawingContext.closePath();
+}
+
+// The look altitude is always above the horizon, so the sky is inside the horizon curve
+// and the ground is everything outside it
+function drawGround(points) {
+    drawingContext.beginPath();
+    drawingContext.rect(-10, -10, canvasWidth + 20, canvasHeight + 20);
+    traceHorizonPath(points);
+    drawingContext.fillStyle = GROUND_COLOR;
+    if (showBelowHorizonCheckbox.checked === true) {
+        drawingContext.globalAlpha = 0.72;
+    } else {
+        drawingContext.globalAlpha = 1;
+    }
+    drawingContext.fill("evenodd");
+    drawingContext.globalAlpha = 1;
+}
+
+function drawHorizonLine(points) {
+    drawingContext.lineWidth = 2;
+    drawingContext.strokeStyle = HORIZON_COLOR;
+    drawingContext.beginPath();
+    traceHorizonPath(points);
+    drawingContext.stroke();
+}
+
+// Compass labels sit just above the horizon
+function drawCompassLabels() {
+    const labelNames = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    const labelAltitudeRadians = 3 * DEGREES_TO_RADIANS;
+    drawingContext.textAlign = "center";
+    drawingContext.textBaseline = "middle";
+    for (let index = 0; index < labelNames.length; index = index + 1) {
+        const azimuthRadians = index * 45 * DEGREES_TO_RADIANS;
+        projectDirection(Math.sin(azimuthRadians) * Math.cos(labelAltitudeRadians), Math.cos(azimuthRadians) * Math.cos(labelAltitudeRadians), Math.sin(labelAltitudeRadians), projectionResult);
+        if (projectionResult.depth <= 0) {
+            continue;
+        }
+        if (isOnScreen(projectionResult.x, projectionResult.y, 20) === false) {
+            continue;
+        }
+        if (index % 2 === 0) {
+            drawingContext.font = "700 20px 'Segoe UI', Arial, sans-serif";
+            drawingContext.fillStyle = CARDINAL_LABEL_COLOR;
+        } else {
+            drawingContext.font = "600 14px 'Segoe UI', Arial, sans-serif";
+            drawingContext.fillStyle = INTERCARDINAL_LABEL_COLOR;
+        }
+        drawHaloText(labelNames[index], projectionResult.x, projectionResult.y - 10);
+    }
+}
+
+function getCompassName(azimuthDegrees) {
+    const names = ["North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest"];
+    const index = Math.round(azimuthDegrees / 45) % 8;
+    return names[index];
+}
+
+function updateReadouts(siderealDegrees) {
+    const siderealHours = siderealDegrees / 15;
+    const wholeHours = Math.floor(siderealHours);
+    const wholeMinutes = Math.floor((siderealHours - wholeHours) * 60);
+    siderealReadout.textContent = "Local sidereal time: " + padTwoDigits(wholeHours) + "h " + padTwoDigits(wholeMinutes) + "m";
+    viewReadout.textContent = "Facing " + getCompassName(viewAzimuthDegrees) + " (" + Math.round(viewAzimuthDegrees) + "\u00B0), " + Math.round(viewAltitudeDegrees) + "\u00B0 above the horizon, " + Math.round(fieldOfViewDegrees) + "\u00B0 wide";
+}
+
+function drawSky() {
+    const latitudeDegrees = readLatitudeDegrees();
+    const siderealDegrees = calculateLocalSiderealDegrees(displayedDate, readLongitudeDegrees());
+
+    updateCamera();
+
+    drawingContext.shadowBlur = 0;
+    drawingContext.fillStyle = BACKGROUND_COLOR;
+    drawingContext.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    updateStarPositions(siderealDegrees, latitudeDegrees);
+
+    if (showGridCheckbox.checked === true) {
+        drawDirectionGrid();
+    }
+    if (showLinesCheckbox.checked === true) {
+        drawConstellationLines();
+    }
+    drawStars();
+    if (showDeepSkyCheckbox.checked === true) {
+        updateDeepSkyPositions(siderealDegrees, latitudeDegrees);
+        drawDeepSkyMarkers();
+    }
+
+    const horizonPoints = buildHorizonPoints();
+    drawGround(horizonPoints);
+    drawHorizonLine(horizonPoints);
+    drawCompassLabels();
+
+    if (showStarNamesCheckbox.checked === true) {
+        drawStarNames();
+    }
+    if (showDeepSkyCheckbox.checked === true) {
+        drawDeepSkyLabels();
+    }
+    if (showConstellationNamesCheckbox.checked === true) {
+        drawConstellationNames(siderealDegrees, latitudeDegrees);
+    }
+
+    updateReadouts(siderealDegrees);
+}
+
+function performRedraw() {
+    redrawIsScheduled = false;
+    drawSky();
+}
+
+function requestRedraw() {
+    if (redrawIsScheduled === false) {
+        redrawIsScheduled = true;
+        window.requestAnimationFrame(performRedraw);
+    }
+}
+
+function resizeCanvas() {
+    let pixelRatio = window.devicePixelRatio;
+    if (!pixelRatio) {
+        pixelRatio = 1;
+    }
+    canvasWidth = window.innerWidth;
+    canvasHeight = window.innerHeight;
+    skyCanvas.width = Math.floor(canvasWidth * pixelRatio);
+    skyCanvas.height = Math.floor(canvasHeight * pixelRatio);
+    skyCanvas.style.width = canvasWidth + "px";
+    skyCanvas.style.height = canvasHeight + "px";
+    drawingContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    requestRedraw();
+}
+
+// Set the look direction and keep it inside the allowed range
+function setView(azimuthDegrees, altitudeDegrees) {
+    let newAzimuth = azimuthDegrees % 360;
+    if (newAzimuth < 0) {
+        newAzimuth = newAzimuth + 360;
+    }
+    let newAltitude = altitudeDegrees;
+    if (newAltitude < MINIMUM_ALTITUDE_DEGREES) {
+        newAltitude = MINIMUM_ALTITUDE_DEGREES;
+    }
+    if (newAltitude > MAXIMUM_ALTITUDE_DEGREES) {
+        newAltitude = MAXIMUM_ALTITUDE_DEGREES;
+    }
+    viewAzimuthDegrees = newAzimuth;
+    viewAltitudeDegrees = newAltitude;
+    requestRedraw();
+}
+
+function setFieldOfView(requestedDegrees) {
+    let newFieldOfView = requestedDegrees;
+    if (newFieldOfView < MINIMUM_FIELD_OF_VIEW_DEGREES) {
+        newFieldOfView = MINIMUM_FIELD_OF_VIEW_DEGREES;
+    }
+    if (newFieldOfView > MAXIMUM_FIELD_OF_VIEW_DEGREES) {
+        newFieldOfView = MAXIMUM_FIELD_OF_VIEW_DEGREES;
+    }
+    fieldOfViewDegrees = newFieldOfView;
+    requestRedraw();
+}
+
+function resetView() {
+    viewAzimuthDegrees = DEFAULT_AZIMUTH_DEGREES;
+    viewAltitudeDegrees = DEFAULT_ALTITUDE_DEGREES;
+    fieldOfViewDegrees = DEFAULT_FIELD_OF_VIEW_DEGREES;
+    requestRedraw();
+}
+
+// Mouse wheel zoom changes the field of view
+function handleWheel(event) {
+    event.preventDefault();
+    const zoomFactor = Math.exp(-event.deltaY * 0.0015);
+    setFieldOfView(fieldOfViewDegrees / zoomFactor);
+}
+
+function handleDoubleClick() {
+    setFieldOfView(fieldOfViewDegrees / 2);
+}
+
+// Pointer tracking for drag to look around and two-finger pinch to zoom
+const activePointers = [];
+let lastPinchDistance = 0;
+
+function findPointerIndex(pointerId) {
+    for (let index = 0; index < activePointers.length; index = index + 1) {
+        if (activePointers[index].id === pointerId) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+function calculatePointerDistance() {
+    const deltaX = activePointers[0].x - activePointers[1].x;
+    const deltaY = activePointers[0].y - activePointers[1].y;
+    return Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+}
+
+function handlePointerDown(event) {
+    skyCanvas.setPointerCapture(event.pointerId);
+    activePointers.push({ id: event.pointerId, x: event.clientX, y: event.clientY });
+    skyCanvas.classList.add("dragging");
+    if (activePointers.length === 2) {
+        lastPinchDistance = calculatePointerDistance();
+    }
+}
+
+function handlePointerMove(event) {
+    const pointerIndex = findPointerIndex(event.pointerId);
+    if (pointerIndex < 0) {
+        return;
+    }
+    const pointer = activePointers[pointerIndex];
+    const deltaX = event.clientX - pointer.x;
+    const deltaY = event.clientY - pointer.y;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+
+    // Dragging moves the sky with the pointer, so the look direction moves the opposite way
+    if (activePointers.length === 1) {
+        const degreesPerPixel = RADIANS_TO_DEGREES / getPixelsPerUnit();
+        let azimuthFactor = 1 / Math.cos(viewAltitudeDegrees * DEGREES_TO_RADIANS);
+        if (azimuthFactor > 5) {
+            azimuthFactor = 5;
+        }
+        setView(viewAzimuthDegrees - deltaX * degreesPerPixel * azimuthFactor, viewAltitudeDegrees + deltaY * degreesPerPixel);
+    }
+    if (activePointers.length === 2) {
+        const newDistance = calculatePointerDistance();
+        if (lastPinchDistance > 0) {
+            setFieldOfView(fieldOfViewDegrees / (newDistance / lastPinchDistance));
+        }
+        lastPinchDistance = newDistance;
+    }
+}
+
+function handlePointerEnd(event) {
+    const pointerIndex = findPointerIndex(event.pointerId);
+    if (pointerIndex >= 0) {
+        activePointers.splice(pointerIndex, 1);
+    }
+    if (activePointers.length < 2) {
+        lastPinchDistance = 0;
+    }
+    if (activePointers.length === 0) {
+        skyCanvas.classList.remove("dragging");
+    }
+}
+
+// Date and time controls
+function showDisplayedDateInInput() {
+    dateTimeInput.value = formatDateForInput(displayedDate);
+}
+
+function handleDateTimeChange() {
+    const parsedDate = new Date(dateTimeInput.value);
+    if (isNaN(parsedDate.getTime())) {
+        return;
+    }
+    displayedDate = parsedDate;
+    followClockCheckbox.checked = false;
+    requestRedraw();
+}
+
+function handleNowButton() {
+    displayedDate = new Date();
+    followClockCheckbox.checked = true;
+    showDisplayedDateInInput();
+    requestRedraw();
+}
+
+function handleStepButton(event) {
+    const minutes = Number(event.currentTarget.getAttribute("data-minutes"));
+    displayedDate = new Date(displayedDate.getTime() + minutes * 60000);
+    followClockCheckbox.checked = false;
+    showDisplayedDateInInput();
+    requestRedraw();
+}
+
+function handleFollowClockChange() {
+    if (followClockCheckbox.checked === true) {
+        displayedDate = new Date();
+        showDisplayedDateInInput();
+        requestRedraw();
+    }
+}
+
+function handleClockTick() {
+    if (followClockCheckbox.checked === true) {
+        displayedDate = new Date();
+        showDisplayedDateInInput();
+        requestRedraw();
+    }
+}
+
+// Look direction buttons
+function handleLookButton(event) {
+    const azimuthText = event.currentTarget.getAttribute("data-azimuth");
+    const altitudeText = event.currentTarget.getAttribute("data-altitude");
+    let newAzimuth = viewAzimuthDegrees;
+    let newAltitude = viewAltitudeDegrees;
+    if (azimuthText !== null) {
+        newAzimuth = Number(azimuthText);
+    }
+    if (altitudeText !== null) {
+        newAltitude = Number(altitudeText);
+    }
+    setView(newAzimuth, newAltitude);
+}
+
+// Location lookup
+function handleLocationSuccess(position) {
+    latitudeInput.value = position.coords.latitude.toFixed(2);
+    longitudeInput.value = position.coords.longitude.toFixed(2);
+    locationStatus.textContent = "Location set from this device.";
+    requestRedraw();
+}
+
+function handleLocationFailure() {
+    locationStatus.textContent = "Location was not available. Type the latitude and longitude instead.";
+}
+
+function handleLocationButton() {
+    if (!navigator.geolocation) {
+        locationStatus.textContent = "This browser does not provide location. Type the latitude and longitude instead.";
+        return;
+    }
+    locationStatus.textContent = "Requesting location...";
+    navigator.geolocation.getCurrentPosition(handleLocationSuccess, handleLocationFailure);
+}
+
+function handleTogglePanel() {
+    if (panelBody.classList.contains("hidden")) {
+        panelBody.classList.remove("hidden");
+        togglePanelButton.textContent = "Hide";
+    } else {
+        panelBody.classList.add("hidden");
+        togglePanelButton.textContent = "Show";
+    }
+}
+
+function handleZoomIn() {
+    setFieldOfView(fieldOfViewDegrees / 1.4);
+}
+
+function handleZoomOut() {
+    setFieldOfView(fieldOfViewDegrees * 1.4);
+}
+
+function handleRedrawRequest() {
+    requestRedraw();
+}
+
+// Wire up events
+skyCanvas.addEventListener("wheel", handleWheel, { passive: false });
+skyCanvas.addEventListener("dblclick", handleDoubleClick);
+skyCanvas.addEventListener("pointerdown", handlePointerDown);
+skyCanvas.addEventListener("pointermove", handlePointerMove);
+skyCanvas.addEventListener("pointerup", handlePointerEnd);
+skyCanvas.addEventListener("pointercancel", handlePointerEnd);
+window.addEventListener("resize", resizeCanvas);
+
+dateTimeInput.addEventListener("change", handleDateTimeChange);
+latitudeInput.addEventListener("input", handleRedrawRequest);
+longitudeInput.addEventListener("input", handleRedrawRequest);
+locationButton.addEventListener("click", handleLocationButton);
+followClockCheckbox.addEventListener("change", handleFollowClockChange);
+showLinesCheckbox.addEventListener("change", handleRedrawRequest);
+showConstellationNamesCheckbox.addEventListener("change", handleRedrawRequest);
+showStarNamesCheckbox.addEventListener("change", handleRedrawRequest);
+showDeepSkyCheckbox.addEventListener("change", handleRedrawRequest);
+showGridCheckbox.addEventListener("change", handleRedrawRequest);
+showBelowHorizonCheckbox.addEventListener("change", handleRedrawRequest);
+nowButton.addEventListener("click", handleNowButton);
+togglePanelButton.addEventListener("click", handleTogglePanel);
+zoomInButton.addEventListener("click", handleZoomIn);
+zoomOutButton.addEventListener("click", handleZoomOut);
+resetViewButton.addEventListener("click", resetView);
+
+const stepButtons = document.getElementsByClassName("stepButton");
+for (let index = 0; index < stepButtons.length; index = index + 1) {
+    stepButtons[index].addEventListener("click", handleStepButton);
+}
+
+const lookButtons = document.getElementsByClassName("lookButton");
+for (let index = 0; index < lookButtons.length; index = index + 1) {
+    lookButtons[index].addEventListener("click", handleLookButton);
+}
+
+// Start up
+showDisplayedDateInInput();
+resizeCanvas();
+window.setInterval(handleClockTick, 30000);
+</script>
+</body>
+</html>
